@@ -26,6 +26,7 @@ function intensiveOperation() {
 async function subscriber() {
     const connection = await amqp.connect('amqp://localhost')
     const channel = await connection.createChannel()
+    // const channel = await connection.createConfirmChannel()
 
     channel.prefetch(1)
 

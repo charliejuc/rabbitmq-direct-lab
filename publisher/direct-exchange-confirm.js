@@ -24,7 +24,7 @@ async function publisher() {
                 }
 
                 const _connection = await amqp.connect('amqp://localhost')
-                const _channel = await _connection.createChannel()
+                const _channel = await _connection.createConfirmChannel()
 
                 _channel.assertExchange(exchangeName, exchangeType, {
                     // durable: true
@@ -39,7 +39,7 @@ async function publisher() {
                 text: 'Hello world!'
             }
 
-            const sent = channel.publish(
+            channel.publish(
                 exchangeName,
                 routingKey,
                 Buffer.from(JSON.stringify(message)),
@@ -48,15 +48,9 @@ async function publisher() {
                 }
             )
 
-            if (sent) {
-                console.log(`Sent message to "${exchangeName}" exchange`, message)
-                setTimeout(sendMessage, delay, connection, channel, 0)
-                return
-            }
-
-            console.error({sent})
-            console.log(`Fail sending message to "${exchangeName}" exchange`, message)
-            setTimeout(sendMessage, delay, connection, channel, errorsCount + 1)
+            await channel.waitForConfirms()
+            console.log(`Message sent to "${exchangeName}" exchange confirmed`, message)
+            setTimeout(sendMessage, delay, connection, channel, 0)
         } catch (error) {
             console.error(error, {errorsCount})
             setTimeout(sendMessage, delay, connection, channel, errorsCount + 1)
