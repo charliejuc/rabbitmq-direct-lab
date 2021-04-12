@@ -30,9 +30,13 @@ async function subscriber() {
 
     channel.prefetch(1)
 
-    await channel.assertQueue(queue)
+    await channel.assertQueue(queue, {
+        durable: true
+    })
 
-    await channel.assertExchange(exchangeName, exchangeType)
+    await channel.assertExchange(exchangeName, exchangeType, {
+        // durable: true
+    })
 
     await channel.bindQueue(queue, exchangeName, pattern)
 
