@@ -1,11 +1,12 @@
 'use strict'
 
 const amqp = require('amqplib')
+const {backOff} = require("../lib/backoff");
 const queue = process.env.QUEUE || 'hello'
 const exchangeName = process.env.EXCHANGE || 'my-direct'
 const difficulty = process.env.DIFFICULTY != null
-                        ? Number(process.env.DIFFICULTY)
-                        : 9
+    ? Number(process.env.DIFFICULTY)
+    : 9
 const exchangeType = 'direct'
 const pattern = process.env.PATTERN || ''
 
@@ -20,38 +21,59 @@ function intensiveOperation() {
     const minDifficulty = Math.floor(maxDifficulty * .8)
 
     let i = minDifficulty + Math.floor(Math.random() * (maxDifficulty - minDifficulty))
-    while (i--) {}
+    while (i--) {
+    }
 }
 
 async function subscriber() {
-    const connection = await amqp.connect('amqp://localhost')
-    const channel = await connection.createChannel()
-    // const channel = await connection.createConfirmChannel()
+    const backOffMinTime1MaxTime4 = backOff(1)(4)
 
-    channel.prefetch(1)
+    const main = async () => {
+        const connection = await amqp.connect('amqp://localhost')
+        const channel = await connection.createChannel()
 
-    await channel.assertQueue(queue, {
-        durable: true
-    })
+        channel.prefetch(1)
 
-    await channel.assertExchange(exchangeName, exchangeType, {
-        // durable: true
-    })
+        channel.on('close', () => {
+            mainBackOff()
+        })
 
-    await channel.bindQueue(queue, exchangeName, pattern)
+        await channel.assertQueue(queue, {
+            durable: true
+        })
 
-    channel.consume(queue, (message) => {
-        const content = JSON.parse(message.content.toString())
+        await channel.assertExchange(exchangeName, exchangeType, {
+            // durable: true
+        })
 
-        console.log(`Received message from "${queue}" queue`)
-        console.log(content)
+        await channel.bindQueue(queue, exchangeName, pattern)
 
-        intensiveOperation()
+        channel.consume(queue, (message) => {
+            const content = JSON.parse(message.content.toString())
 
-        console.log('DONE!')
+            console.log(`Received message from "${queue}" queue`)
+            console.log(content)
 
-        channel.ack(message)
-    })
+            intensiveOperation()
+
+            console.log('DONE!')
+
+            channel.ack(message)
+        })
+    }
+
+    const onErrorEnd = (error) => {
+        console.error(error)
+        mainBackOff().catch(console.error)
+    }
+    const mainBackOff = backOffMinTime1MaxTime4(
+        main,
+        onErrorEnd,
+        console.log,
+        console.error
+    )
+
+    mainBackOff()
 }
 
 subscriber().catch((error) => {

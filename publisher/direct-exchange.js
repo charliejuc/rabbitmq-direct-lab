@@ -1,13 +1,14 @@
 'use strict'
 
 const amqp = require('amqplib')
+const {backOff} = require('../lib/backoff');
+
 const exchangeName = process.env.EXCHANGE || 'my-direct'
 const routingKey = process.env.ROUTING_KEY || ''
 const delay = process.env.DELAY != null
     ? Number(process.env.DELAY)
-    : 3000
+    : 2000
 const exchangeType = 'direct'
-const maxErrors = 5
 
 console.log({
     exchangeName,
@@ -16,21 +17,40 @@ console.log({
 })
 
 async function publisher() {
-    const sendMessage = async (connection, channel, errorsCount) => {
-        try {
-            if (errorsCount >= maxErrors || connection === null) {
-                if (connection !== null) {
-                    connection.close()
-                }
+    const messages = []
 
-                const _connection = await amqp.connect('amqp://localhost')
-                const _channel = await _connection.createChannel()
+    const sendMessage = async (connection, channel, message) => {
+        const sent = channel.publish(
+            exchangeName,
+            routingKey,
+            Buffer.from(JSON.stringify(message)),
+            {
+                // persistent: true,
+            }
+        )
 
-                _channel.assertExchange(exchangeName, exchangeType, {
-                    // durable: true
-                })
+        if (sent) {
+            console.log(`Sent message to "${exchangeName}" exchange`, message)
+            return
+        }
 
-                await sendMessage(_connection, _channel, 0)
+        console.error({sent})
+        throw new Error(`Fail sending message to "${exchangeName}" exchange, "${JSON.stringify(message)}"`)
+    }
+
+    const backOffMinTime1MaxTime4 = backOff(1)(4)
+    const backOffMinTime1MaxTime32 = backOff(1)(32)
+    const main = async (messages) => {
+        const connection = await amqp.connect('amqp://localhost')
+        const channel = await connection.createChannel()
+
+        channel.assertExchange(exchangeName, exchangeType, {
+            // durable: true
+        })
+
+        const sendMessageTimeout = () => {
+            if (messages.length > 0) {
+                setTimeout(sendMessageBackOff, delay, connection, channel, messages.shift())
                 return
             }
 
@@ -39,31 +59,40 @@ async function publisher() {
                 text: 'Hello world!'
             }
 
-            const sent = channel.publish(
-                exchangeName,
-                routingKey,
-                Buffer.from(JSON.stringify(message)),
-                {
-                    // persistent: true,
-                }
-            )
-
-            if (sent) {
-                console.log(`Sent message to "${exchangeName}" exchange`, message)
-                setTimeout(sendMessage, delay, connection, channel, 0)
-                return
-            }
-
-            console.error({sent})
-            console.log(`Fail sending message to "${exchangeName}" exchange`, message)
-            setTimeout(sendMessage, delay, connection, channel, errorsCount + 1)
-        } catch (error) {
-            console.error(error, {errorsCount})
-            setTimeout(sendMessage, delay, connection, channel, errorsCount + 1)
+            setTimeout(sendMessageBackOff, delay, connection, channel, message)
         }
+
+        const onErrorEnd = (_, ...args) => {
+            connection.close()
+
+            const message = args[2]
+            messages.push(message)
+
+            mainBackOff(messages)
+        }
+
+        const sendMessageBackOff = backOffMinTime1MaxTime4(
+            sendMessage,
+            onErrorEnd,
+            sendMessageTimeout,
+            console.error
+        )
+
+        sendMessageTimeout()
     }
 
-    setTimeout(sendMessage, delay, null, null, 0)
+    const onErrorEnd = (error) => {
+        console.error(error)
+        mainBackOff(messages)
+    }
+    const mainBackOff = backOffMinTime1MaxTime32(
+        main,
+        onErrorEnd,
+        console.log,
+        console.error
+    )
+
+    mainBackOff(messages)
 }
 
 publisher().catch((error) => {
