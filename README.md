@@ -25,11 +25,9 @@ All subscribers receive all messages.
 ### Subscribers (Run commands in different terminals)
 
 ```bash
-PATTERN=A QUEUE=first EXCHANGE=my-direct node subscriber/direct-exchang
-e.js
+PATTERN=A QUEUE=first EXCHANGE=my-direct node subscriber/direct-exchange.js
 
-PATTERN=A QUEUE=second EXCHANGE=my-direct node subscriber/direct-exchang
-e.js
+PATTERN=A QUEUE=second EXCHANGE=my-direct node subscriber/direct-exchange.js
 ```
 
 ### Publishers
