@@ -1,7 +1,7 @@
 'use strict'
 
 const amqp = require('amqplib')
-const {backOff} = require('../lib/backoff');
+const {backOff} = require('../lib/backoff')
 
 const exchangeName = process.env.EXCHANGE || 'my-direct'
 const routingKey = process.env.ROUTING_KEY || ''

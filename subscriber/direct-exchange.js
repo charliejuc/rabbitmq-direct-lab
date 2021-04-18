@@ -1,7 +1,7 @@
 'use strict'
 
 const amqp = require('amqplib')
-const {backOff} = require("../lib/backoff");
+const {backOff} = require('../lib/backoff')
 const queue = process.env.QUEUE || 'hello'
 const exchangeName = process.env.EXCHANGE || 'my-direct'
 const difficulty = process.env.DIFFICULTY != null
